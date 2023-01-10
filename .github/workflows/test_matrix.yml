@@ -1,0 +1,70 @@
+name: Build and Test Matrix
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pre_job:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          cancel_others: 'true'
+          skip_after_successful_duplicate: 'true'
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
+          paths_ignore: '["**/README.md", "**/docs/**"]'
+  build:
+    name: ${{ matrix.config.name }}
+    needs: pre_job
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config: 
+        - {
+            name: "Windows - MSVC",
+            os: windows-latest,
+            cxx: "cl",
+            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
+            generators: "Visual Studio 17 2022",
+          }
+        - {
+            name: "Ubuntu - Clang",
+            os: ubuntu-latest,
+            cxx: "clang++-14",
+          }
+        - {
+            name: "Ubuntu - GCC",
+            os: ubuntu-latest,
+            cxx: "g++-11",
+          }
+        - {
+            name: "macOS - Clang",
+            os: macos-latest,
+            cxx: "clang++",
+          }
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: |
+          CMAKE_ARGS="-DCMAKE_CXX_COMPILER=${{matrix.config.cxx}}" pip install ".[test]" -v
+
+      - name: Test
+        run: pytest
